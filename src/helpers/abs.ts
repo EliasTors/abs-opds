@@ -133,7 +133,7 @@ export function buildLibraryEntries(libraries: Library[], user: InternalUser): X
     ]);
 }
 
-export function buildCategoryEntries(libraryId: string, user: InternalUser, lang?: string): XMLNode[] {
+export function buildCategoryEntries(libraryId: string, user: InternalUser, lang?: string | string[]): XMLNode[] {
     return [
         builder.create('entry', { headless: true })
             .ele('id', libraryId).up()

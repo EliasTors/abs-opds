@@ -1,7 +1,7 @@
 export type Library = {
     id: string
     name: string
-    image: string
+    icon: string
 }
 
 export type LibraryItem = {

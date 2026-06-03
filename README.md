@@ -38,7 +38,7 @@ The following environment variables can be set in a `.env` file or directly in y
 | Variable         | Description                                                                 | Default               | Required |
 |------------------|-----------------------------------------------------------------------------|-----------------------|----------|
 | ABS_URL          | Your Audiobookshelf server URL, e.g. https://audiobooks.dev                |                       | Yes      |
-| SHOW_AUDIOBOOKS  | Show audiobooks in the OPDS feed.                                          | false                 | No       |
+| SHOW_AUDIOBOOKS  | Show audiobooks in the OPDS feed. When disabled, top-level libraries/categories with no ebook items are hidden. | false                 | No       |
 | SHOW_CHAR_CARDS  | Show character cards (A, B, C, ...) before showing names of author, narrator, etc. | false                 | No       |
 | USE_PROXY        | Use a proxy to connect to ABS. If you use the docker network, set this to true to view covers in your reader. Creates potential security risks if someone can read the RAM of the software. | false                 | No       |
 | PORT             | The port the OPDS server will run on.                                      | 3010                  | No       |

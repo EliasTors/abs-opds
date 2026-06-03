@@ -32,8 +32,9 @@ export async function loadLocalizations() {
     localizations = Object.fromEntries(entries.filter(Boolean) as [string, any][])
 }
 
-export default function localize(key: string, lang?: string): string {
-    const languageCode = lang?.split('-')[0].toLowerCase() ?? fallbackLanguage
+export default function localize(key: string, lang?: string | string[]): string {
+    const requestedLanguage = Array.isArray(lang) ? lang[0] : lang
+    const languageCode = requestedLanguage?.split('-')[0].toLowerCase() ?? fallbackLanguage
     const language = localizations[languageCode] ? languageCode : fallbackLanguage
 
     return localizations[language]?.[key] ?? localizations[fallbackLanguage]?.[key] ?? key
