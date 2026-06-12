@@ -153,6 +153,38 @@ const parseItems = (items: any): LibraryItem[] =>
         }))
         .filter((item: LibraryItem) => item.format !== undefined || showAudioBooks)
 
+function getLibraryItemsCacheKey(libraryId: string, user: InternalUser): string {
+    return `${hash('sha1', `${user.name}:${user.apiKey}`)}:${libraryId}`
+}
+
+async function getLibraryItems(libraryId: string, user: InternalUser) {
+    const cacheKey = getLibraryItemsCacheKey(libraryId, user)
+
+    if (libraryItemsCache[cacheKey] && Date.now() - libraryItemsCache[cacheKey].timestamp < CACHE_EXPIRATION) {
+        return libraryItemsCache[cacheKey].data
+    }
+
+    const items = await apiCall(`/libraries/${libraryId}/items`, user)
+    libraryItemsCache[cacheKey] = { timestamp: Date.now(), data: items }
+    return items
+}
+
+async function libraryHasVisibleItems(libraryId: string, user: InternalUser): Promise<boolean> {
+    if (showAudioBooks) return true
+
+    const items = await getLibraryItems(libraryId, user)
+    return parseItems(items).length > 0
+}
+
+async function ensureLibraryIsVisible(libraryId: string, user: InternalUser, res: Response): Promise<boolean> {
+    if (await libraryHasVisibleItems(libraryId, user)) {
+        return true
+    }
+
+    res.status(404).send('Library not found')
+    return false
+}
+
 app.get('/opds', authenticateUser, async (req: Request, res: Response) => {
     const user = req.user!
 
@@ -162,17 +194,36 @@ app.get('/opds', authenticateUser, async (req: Request, res: Response) => {
         name: library.name,
         icon: library.icon
     }))
+    const visibleLibraries = showAudioBooks
+        ? parsedLibaries
+        : (
+              await Promise.all(
+                  parsedLibaries.map(async (library) => ({
+                      library,
+                      visible: await libraryHasVisibleItems(library.id, user)
+                  }))
+              )
+          )
+              .filter(({ visible }) => visible)
+              .map(({ library }) => library)
 
-    //Skip listing libraries and redirect to the first library if only a single library is configured
-    if (parsedLibaries.length === 1) {
-        return res.redirect(`/opds/libraries/${parsedLibaries[0].id}?categories=true`)
+    //Skip listing libraries if only a single library is visible.
+    if (visibleLibraries.length === 1) {
+        const library = visibleLibraries[0]
+        return res.type('application/xml').send(
+            buildOPDSXMLSkeleton(
+                `urn:uuid:${library.id}`,
+                `Categories`,
+                buildCategoryEntries(library.id, user, req.headers['accept-language'])
+            )
+        )
     }
 
     res.type('application/xml').send(
         buildOPDSXMLSkeleton(
             hash('sha1', user.name),
             `${user.name}'s Libraries`,
-            buildLibraryEntries(parsedLibaries, user)
+            buildLibraryEntries(visibleLibraries, user)
         )
     )
 })
@@ -180,6 +231,10 @@ app.get('/opds', authenticateUser, async (req: Request, res: Response) => {
 app.get('/opds/libraries/:libraryId', authenticateUser, async (req: Request, res: Response) => {
     const user = req.user!
     const lang = req.headers['accept-language']
+
+    if (!(await ensureLibraryIsVisible(req.params.libraryId, user, res))) {
+        return
+    }
 
     if (req.query.categories) {
         res.type('application/xml').send(
@@ -192,15 +247,7 @@ app.get('/opds/libraries/:libraryId', authenticateUser, async (req: Request, res
         return
     }
 
-    const cacheKey = `${req.params.libraryId}`
-    let items
-
-    if (libraryItemsCache[cacheKey] && Date.now() - libraryItemsCache[cacheKey].timestamp < CACHE_EXPIRATION) {
-        items = libraryItemsCache[cacheKey].data
-    } else {
-        items = await apiCall(`/libraries/${req.params.libraryId}/items`, user)
-        libraryItemsCache[cacheKey] = { timestamp: Date.now(), data: items }
-    }
+    const items = await getLibraryItems(req.params.libraryId, user)
 
     const library: Library = await apiCall(`/libraries/${req.params.libraryId}`, user)
 
@@ -298,11 +345,19 @@ app.get('/opds/libraries/:libraryId', authenticateUser, async (req: Request, res
 app.get('/opds/libraries/:libraryId/search-definition', authenticateUser, async (req: Request, res: Response) => {
     const user = req.user!
 
+    if (!(await ensureLibraryIsVisible(req.params.libraryId, user, res))) {
+        return
+    }
+
     res.type('application/xml').send(buildSearchDefinition(req.params.libraryId, user))
 })
 
 app.get('/opds/libraries/:libraryId/:type', authenticateUser, async (req: Request, res: Response) => {
     const user = req.user!
+
+    if (!(await ensureLibraryIsVisible(req.params.libraryId, user, res))) {
+        return
+    }
 
     if (
         req.params.type !== 'authors' &&
@@ -314,15 +369,7 @@ app.get('/opds/libraries/:libraryId/:type', authenticateUser, async (req: Reques
         return
     }
 
-    const cacheKey = `${req.params.libraryId}`
-    let items
-
-    if (libraryItemsCache[cacheKey] && Date.now() - libraryItemsCache[cacheKey].timestamp < CACHE_EXPIRATION) {
-        items = libraryItemsCache[cacheKey].data
-    } else {
-        items = await apiCall(`/libraries/${req.params.libraryId}/items`, user)
-        libraryItemsCache[cacheKey] = { timestamp: Date.now(), data: items }
-    }
+    const items = await getLibraryItems(req.params.libraryId, user)
 
     const library: Library = await apiCall(`/libraries/${req.params.libraryId}`, user)
 
